@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Очередь сдачи - Общая</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:disabled {
+            background: #cccccc;
+        }
+        .admin-btn {
+            background: #ff4444;
+        }
+        .queue-list {
+            margin-top: 20px;
+        }
+        .queue-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f8f8;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .number {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 12px;
+        }
+        .admin-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 5px;
+            display: none;
+        }
+        .share-link {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Очередь сдачи 🎯</h1>
+        <div id="status"></div>
+        <button id="joinBtn" onclick="joinQueue()">Я сдаю! (+)</button>
+        
+        <div class="queue-list">
+            <h3>Очередь:</h3>
+            <div id="queueContainer"></div>
+        </div>
+
+        <button onclick="toggleAdmin()" class="admin-btn">Админ-панель</button>
+        
+        <div class="admin-panel" id="adminPanel">
+            <h3>Админ-панель</h3>
+            <p>Только вы можете сбрасывать очередь</p>
+            <button onclick="resetQueue()">Сбросить очередь</button>
+            <button onclick="clearMyQueue()">Убрать меня из очереди</button>
+            
+            <div style="margin-top: 15px;">
+                <h4>Поделиться ссылкой:</h4>
+                <div class="share-link" id="shareLink">
+                    Загрузка...
+                </div>
+                <button onclick="copyShareLink()">Скопировать ссылку</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+ // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDDRvLd3fHTfe7nYID1tGMSTJ9g3urtQZI",
+  authDomain: "queue-2f3.firebaseapp.com",
+  databaseURL: "https://queue-2f3-default-rtdb.firebaseio.com",
+  projectId: "queue-2f3",
+  storageBucket: "queue-2f3.firebasestorage.app",
+  messagingSenderId: "534834732526",
+  appId: "1:534834732526:web:dffd437bc37a0dd21182ff"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+        
+        // Настройки админа - ЗАМЕНИТЕ ЭТОТ ПАРОЛЬ на свой!
+        const ADMIN_PASSWORD = "teacher123";
+        let isAdmin = localStorage.getItem('isAdmin') === 'true';
+        
+        let queue = JSON.parse(localStorage.getItem('savingQueue')) || [];
+        let hasJoined = localStorage.getItem('hasJoined') === 'true';
+
+        function updateDisplay() {
+            const container = document.getElementById('queueContainer');
+            const status = document.getElementById('status');
+            const joinBtn = document.getElementById('joinBtn');
+            
+            // Сортируем по времени добавления
+            queue.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            // Обновляем отображение очереди
+            container.innerHTML = '';
+            if (queue.length === 0) {
+                container.innerHTML = '<p>Очередь пуста</p>';
+            } else {
+                queue.forEach((person, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'queue-item';
+                    div.innerHTML = `
+                        <span class="number">${index + 1}.</span>
+                        <span>${person.name}</span>
+                        <span class="timestamp">${new Date(person.timestamp).toLocaleTimeString()}</span>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+            
+            // Обновляем статус кнопки
+            if (hasJoined) {
+                joinBtn.disabled = true;
+                const userPosition = queue.findIndex(p => p.name === getUserName()) + 1;
+                joinBtn.textContent = 'Вы уже в очереди!';
+                status.innerHTML = `<p>Ваш номер в очереди: ${userPosition}</p>`;
+            } else {
+                joinBtn.disabled = false;
+                joinBtn.textContent = 'Я сдаю! (+)';
+                status.innerHTML = '';
+            }
+
+            // Обновляем ссылку для общего доступа
+            updateShareLink();
+        }
+
+        function getUserName() {
+            let name = localStorage.getItem('userName');
+            if (!name) {
+                name = prompt('Введите ваше имя:');
+                if (name) {
+                    localStorage.setItem('userName', name);
+                } else {
+                    name = 'Аноним';
+                }
+            }
+            return name;
+        }
+
+        function joinQueue() {
+            if (hasJoined) return;
+            
+            const name = getUserName();
+            const timestamp = new Date().toISOString();
+            
+            // Проверяем, не в очереди ли уже человек
+            if (!queue.some(person => person.name === name)) {
+                queue.push({ name, timestamp });
+                hasJoined = true;
+                
+                localStorage.setItem('savingQueue', JSON.stringify(queue));
+                localStorage.setItem('hasJoined', 'true');
+                
+                updateDisplay();
+            }
+        }
+
+        function toggleAdmin() {
+            if (isAdmin) {
+                document.getElementById('adminPanel').style.display = 'block';
+            } else {
+                const password = prompt('Введите пароль админа:');
+                if (password === ADMIN_PASSWORD) {
+                    isAdmin = true;
+                    localStorage.setItem('isAdmin', 'true');
+                    document.getElementById('adminPanel').style.display = 'block';
+                    alert('Админ-доступ включен!');
+                } else {
+                    alert('Неверный пароль!');
+                }
+            }
+        }
+
+        function resetQueue() {
+            if (!isAdmin) {
+                alert('Только админ может сбрасывать очередь!');
+                return;
+            }
+            
+            if (confirm('Точно сбросить очередь для всех?')) {
+                queue = [];
+                hasJoined = false;
+                localStorage.removeItem('savingQueue');
+                localStorage.removeItem('hasJoined');
+                updateDisplay();
+                alert('Очередь сброшена!');
+            }
+        }
+
+        function clearMyQueue() {
+            const name = getUserName();
+            queue = queue.filter(person => person.name !== name);
+            hasJoined = false;
+            
+            localStorage.setItem('savingQueue', JSON.stringify(queue));
+            localStorage.setItem('hasJoined', 'false');
+            updateDisplay();
+            alert('Вы вышли из очереди!');
+        }
+
+        function updateShareLink() {
+            // Создаем ссылку для общего доступа
+            const currentUrl = window.location.href;
+            document.getElementById('shareLink').textContent = currentUrl;
+        }
+
+        function copyShareLink() {
+            const link = document.getElementById('shareLink').textContent;
+            navigator.clipboard.writeText(link).then(() => {
+                alert('Ссылка скопирована! Отправьте ее одноклассникам');
+            });
+        }
+
+        // Обновляем каждые 3 секунды
+        setInterval(updateDisplay, 3000);
+
+        // Инициализация
+        updateDisplay();
+        
+        // Показываем инструкцию при первом заходе
+        if (!localStorage.getItem('firstVisit')) {
+            alert('Добро пожаловать! 📚\n\nКак использовать:\n1. Нажмите "+" чтобы встать в очередь\n2. Поделитесь ссылкой с одноклассниками\n3. Админ может сбрасывать очередь\n\nПароль админа: ' + ADMIN_PASSWORD);
+            localStorage.setItem('firstVisit', 'true');
+        }
+    </script>
+</body>
+</html>
